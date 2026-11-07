@@ -1,8 +1,8 @@
 cask "voiremote" do
-  version "0.3.5"
-  sha256 "7033896c35d546dc96315b3dfc06344bb9b8ac058b922ee6c0b28c2c5f4cdad0"
+  version "0.3.6"
+  sha256 "7374768b73a9b26edce1b7a5131913e3a2eb6db1f891d95cace10449416b4d6e"
 
-  url "https://github.com/realDGD/VoiRemote/archive/f882b4e4a1eca10a4a5924cfa22ffb1ba275ab17.tar.gz"
+  url "https://github.com/realDGD/VoiRemote/archive/bc0e4857f9c4f723841d34782199b706ee54f600.tar.gz"
   name "VoiRemote"
   desc "Native macOS remote key mapping and voice app compiled with CLT"
   homepage "https://github.com/realDGD/VoiRemote"
@@ -10,25 +10,25 @@ cask "voiremote" do
   depends_on macos: :sonoma
 
   preflight_steps do
-    run "/bin/bash", args: ["scripts/build-cask.sh", "0.3.5", "f882b4e4a1eca10a4a5924cfa22ffb1ba275ab17", "7033896c35d546dc96315b3dfc06344bb9b8ac058b922ee6c0b28c2c5f4cdad0"],
-                      chdir: "VoiRemote-f882b4e4a1eca10a4a5924cfa22ffb1ba275ab17", print_stdout: true,
+    run "/bin/bash", args: ["scripts/build-cask.sh", "0.3.6", "bc0e4857f9c4f723841d34782199b706ee54f600", "7374768b73a9b26edce1b7a5131913e3a2eb6db1f891d95cace10449416b4d6e"],
+                      chdir: "VoiRemote-bc0e4857f9c4f723841d34782199b706ee54f600", print_stdout: true,
                       env: { "DEVELOPER_DIR" => "/Library/Developer/CommandLineTools" }
   end
 
   installer script: {
-    executable: "VoiRemote-f882b4e4a1eca10a4a5924cfa22ffb1ba275ab17/scripts/install-cask-app.sh",
-    args: ["#{appdir}/VoiRemote.app", "f882b4e4a1eca10a4a5924cfa22ffb1ba275ab17"],
+    executable: "VoiRemote-bc0e4857f9c4f723841d34782199b706ee54f600/scripts/install-cask-app.sh",
+    args: ["#{appdir}/VoiRemote.app", "bc0e4857f9c4f723841d34782199b706ee54f600"],
   }
-  binary "VoiRemote-f882b4e4a1eca10a4a5924cfa22ffb1ba275ab17/packaging/homebrew/voiremote"
+  binary "VoiRemote-bc0e4857f9c4f723841d34782199b706ee54f600/packaging/homebrew/voiremote"
 
   postflight_steps do
-    remove ["VoiRemote-f882b4e4a1eca10a4a5924cfa22ffb1ba275ab17/.build", "VoiRemote-f882b4e4a1eca10a4a5924cfa22ffb1ba275ab17/.swiftpm"], recursive: true
+    remove ["VoiRemote-bc0e4857f9c4f723841d34782199b706ee54f600/.build", "VoiRemote-bc0e4857f9c4f723841d34782199b706ee54f600/.swiftpm"], recursive: true
   end
 
   uninstall quit: "dev.voiremote.app",
             script: {
-              executable: "VoiRemote-f882b4e4a1eca10a4a5924cfa22ffb1ba275ab17/scripts/uninstall-cask-app.sh",
-              args: ["#{appdir}/VoiRemote.app", "f882b4e4a1eca10a4a5924cfa22ffb1ba275ab17"],
+              executable: "VoiRemote-bc0e4857f9c4f723841d34782199b706ee54f600/scripts/uninstall-cask-app.sh",
+              args: ["#{appdir}/VoiRemote.app", "bc0e4857f9c4f723841d34782199b706ee54f600"],
             }
 
   zap trash: [
