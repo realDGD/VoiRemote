@@ -11,7 +11,7 @@
 
 ## 配置与界面
 
-`ConfigurationStore` 在 MainActor 上保存整个配置，存储键保持 `configuration.v1`，应用标识为 `dev.voiremote.app`。数据 schema 为 6，新增0–55秒、默认50秒的 `voiceLimitReminderStartSeconds`。保留schema5的有界 `GestureTiming` 与稀疏逐键 `ButtonBehaviorOverride`，缺省保留300/550/450/80ms与关闭的长按/双击连发选项。旧时序与次级手势优先级不变，无修饰自定义方向/退格现在与内置动作同样自动连发。保留schema4的时限提醒配置、独立 `voiceEnabled` 和默认关闭的 `remoteAudioEnabled`。schema3迁移不改变原有开关。读取 schema 1/2 保留原设置；原映射已开则迁移语音触发为开，不自动启用遥控器音频。未知版本、重复绑定、无效快捷键、越界时序及重复逐键策略拒绝加载，保留原始数据并暂停编辑。
+`ConfigurationStore` 在 MainActor 上保存整个配置，存储键保持 `configuration.v1`，应用标识为 `dev.voiremote.app`。数据 schema 为 6，保留0–55秒、默认50秒的 `voiceLimitReminderStartSeconds`，当前语义为操作提示展开时机，倒计时本身从真实语音开始显示。保留schema5的有界 `GestureTiming` 与稀疏逐键 `ButtonBehaviorOverride`，缺省保留300/550/450/80ms与关闭的长按/双击连发选项。旧时序与次级手势优先级不变，无修饰自定义方向/退格现在与内置动作同样自动连发。保留schema4的时限提醒配置、独立 `voiceEnabled` 和默认关闭的 `remoteAudioEnabled`。schema3迁移不改变原有开关。读取 schema 1/2 保留原设置；原映射已开则迁移语音触发为开，不自动启用遥控器音频。未知版本、重复绑定、无效快捷键、越界时序及重复逐键策略拒绝加载，保留原始数据并暂停编辑。
 
 设置窗口由 AppKit 按需创建并承载 SwiftUI，菜单栏场景常驻。`AppPresentation` 仅跟踪设置窗口：打开时切换 regular，关闭后按本机 Dock 偏好切回 accessory；提醒与授权面板不改变该状态。系统登录项采用 `SMAppService.mainApp`，默认关闭；登录 Apple Event 或 `--background` 不创建设置窗口，首次向导延后到用户打开设置。登录项状态与 Dock 偏好不进入便携配置。`LoginItemMaintenance`仅在卸载/安装CLI运行：注销前持久化已生效的开启状态，安装后恢复并核对实际状态；失败保留恢复请求，用户显式关闭则取消。普通启动不重注册，系统禁用不自动解除，恢复标记不进入配置导出。新身份首次只读迁移旧偏好原始配置和向导标记，不覆盖新配置；旧系统权限不能迁移。
 
@@ -68,8 +68,12 @@ SDK 27 的裸 `@State` 依赖 CLT 不附带的 SwiftUIMacros；`ViewState<Value>
 
 ## RC003临近时限提醒
 
-`RemoteAudioRuntime`发布`VoiceLimitIndicator`快照，只由真实ATVV START建立单调起点；重复START不重置，报告的上限STOP使用中性结束态，主机关闭确认不产生到时提示。Core策略不创建计时器或系统副作用。`VoiceLimitReminderRuntime`只在下一次展示变化时安排一个deadline，代次作废旧唤醒/隐藏任务；默认前50秒不轮询，最后10秒最多每秒更新；可配置0–55秒开始显示，之后仍按原60秒起点每秒更新，最后5秒变红。
+`RemoteAudioRuntime`发布`VoiceLimitIndicator`快照，只由真实ATVV START建立单调起点；重复START不重置，报告的上限STOP使用中性结束态，主机关闭确认不产生到时提示。Core策略不创建计时器或系统副作用。`VoiceLimitReminderRuntime`只在下一次展示变化时安排一个deadline，代次作废旧唤醒/隐藏任务；从真实START起每秒更新倒计时；`showsReleaseHint`按原有0–55秒设置控制操作提示，默认50秒展开，最后5秒图标变红。估算60秒不结束语音，停止事件仍由音频所有者处理。
 
 `ApplicationDelegate`强持有`ConfigurationStore`、`RemoteMappingRuntime`及`VoiceLimitHUDController`，在delegate初始化时建立配置/音频订阅。配置应用不依赖任何窗口onAppear，菜单栏冷启动和关闭设置后仍有效。控制器延迟创建一个NSPanel与复用的SwiftUI内容，非激活、穿透、无声；真实段开始固定回退屏幕，屏幕消失时重选。睡眠取消，唤醒不恢复旧段；退出清理任务、订阅、观察者和窗口。开关同时要求语音及虚拟麦克风启用，预览独立于设备。RC003档案由用户明确开启，不能用共享HID身份自动确认型号。实际原因与未覆盖场景见[决策](../.agents/notes/implemented/feature/2026-10-28-rc003-voice-limit-indicator.md)。
 
-0.2.12的`WeTypeCapsuleFollower`仅在真实倒计时可见区间内（默认50–60秒），每次读完200ms后安排下一次查询；后台`SystemWeTypeWindowSource`最多一个在途窗口列表查询，只提取微信进程的数字元数据。`WeTypeCapsuleMatcher`按3.0.0实测轮廓保守匹配，失败或歧义清除锚点。Core的`VoiceReminderPlacement`转换CG/AppKit坐标，按实际边界选择屏幕并避开整个窗口及上方文字；失败回退固定屏幕位置。位置订阅只移动面板，展示快照避免`@Published`通知早于存储时读回旧态；代次与取消后的二次检查防止旧查询/订阅重入重新安排任务。到60秒、预览、取消、睡眠和退出均不续扫。无需读文字、剪贴板或申请新权限，不改变原有音频/输入事务。选择理由与代价见[跟随决策](../.agents/notes/implemented/feature/2026-10-29-follow-wetype-capsule.md)。
+`WeTypeCapsuleFollower`在真实段可见期间，每次读完200ms后安排下一次查询；后台`SystemWeTypeWindowSource`最多一个在途窗口列表查询，只提取微信进程的数字元数据。估算到60秒仍跟随，实际STOP、松开、隐藏、预览、取消、睡眠和退出不续扫。`WeTypeCapsuleMatcher`按3.0.0实测轮廓保守匹配，失败或歧义清除锚点；`capsuleBounds`使用该版本截图档案估算透明窗口内底部88×36pt按钮及24pt底边距。
+
+Core的`VoiceReminderPlacement`转换CG/AppKit坐标，右侧并排优先、再左侧，垂直对齐绿色按钮中心，并避开整个上方文字区域；无法并排时尝试上下，不安全则回退固定位置。面板始终预留192×34pt安全空间，SwiftUI只绘制104pt短胶囊，提示出现时以0.24秒展开到164pt；结束或接近时限等较长状态使用192pt以免截字；左侧布局从靠近绿色按钮的一边向外展开，系统减少动态效果时不动画。预留空间防止展开时跳到另一侧或压住文字，透明区域保持鼠标穿透。位置订阅只移动面板，SwiftUI直接观察现有提醒运行时，只有布局方向改变时替换根视图，不每秒或每200ms重建根视图；展示快照、代次和取消后的复核防止旧查询或订阅重入复活旧段。
+
+无需读文字、剪贴板或申请新权限，不改变音频/输入事务。代价是开启提醒后的定位覆盖整个语音段，而非仅最后10秒；空闲、关闭能力和键盘直接触发仍无定位查询。理由见[跟随决策](../.agents/notes/implemented/feature/2026-10-29-follow-wetype-capsule.md)，新原生与真机边界见[验证记录](validation/2026-11-07-persistent-voice-countdown.md)。
