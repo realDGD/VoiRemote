@@ -51,6 +51,11 @@ public struct WeTypeCapsuleMatcher: Sendable {
         (199...351).contains(bounds.width)
             && (abs(bounds.height - 130) <= 1 || abs(bounds.height - 180) <= 1)
     }
+    /// WeType 3.0.0's compact control sits inside a larger transparent window.
+    /// This visual profile follows the supplied screenshots, not a public WeType API.
+    public static func capsuleBounds(in window: CGRect) -> CGRect {
+        CGRect(x: window.midX - 44, y: window.maxY - 60, width: 88, height: 36)
+    }
 }
 
 @MainActor public protocol WeTypeWindowSource: AnyObject {

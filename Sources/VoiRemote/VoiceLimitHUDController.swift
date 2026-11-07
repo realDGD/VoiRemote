@@ -10,8 +10,10 @@ private final class VoiceLimitPanel: NSPanel {
 }
 
 enum VoiceLimitHUDLayout {
+    // Reserve expanded space so revealing the hint cannot jump sides or cover the control.
     static let size = CGSize(width: 192, height: 34)
-    static let cornerRadius: CGFloat = 17
+    static let compactWidth: CGFloat = 104
+    static let expandedWidth: CGFloat = 164
 }
 
 /// Application-owned, so closing settings does not detach the reminder.
@@ -29,6 +31,7 @@ enum VoiceLimitHUDLayout {
     // @Published sends before storing. Anchor callbacks must use this incoming value,
     // never re-read runtime.state while a hide/epoch transition is being delivered.
     private var presentationState = VoiceLimitReminderState()
+    private var trailingAligned = false
     private var stopped = false
 
     init(runtime: VoiceLimitReminderRuntime = VoiceLimitReminderRuntime(), inspectionSource: (any WeTypeWindowSource)? = nil) {
@@ -96,13 +99,22 @@ enum VoiceLimitHUDLayout {
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
             panel = window
         }
-        if let hosting { hosting.rootView = VoiceLimitHUD(presentation: state.presentation) }
-        else {
-            let view = NSHostingView(rootView: VoiceLimitHUD(presentation: state.presentation))
+        if hosting == nil {
+            let view = NSHostingView(rootView: content)
+            view.sizingOptions = []
+            view.frame = CGRect(origin: .zero, size: VoiceLimitHUDLayout.size)
+            view.autoresizingMask = [.width, .height]
             hosting = view; window.contentView = view
         }
         placeVisiblePanel()
         if !window.isVisible { window.orderFrontRegardless() }
+    }
+    private var content: VoiceLimitHUD {
+        VoiceLimitHUD(runtime: runtime, trailingAligned: trailingAligned)
+    }
+    private func alignContent(trailing: Bool) {
+        guard trailingAligned != trailing else { return }
+        trailingAligned = trailing; hosting?.rootView = content
     }
     private func placeVisiblePanel() {
         guard !stopped, presentationState.presentation != .hidden,
@@ -110,8 +122,9 @@ enum VoiceLimitHUDLayout {
         let screens = NSScreen.screens
         let size = window.frame.size
         if let anchor = follower.anchor, let primary = screens.first,
-           let point = VoiceReminderPlacement.following(topLeftWindow: anchor, primaryMaxY: primary.frame.maxY,
+           let point = VoiceReminderPlacement.following(topLeftWindow: anchor, topLeftCapsule: WeTypeCapsuleMatcher.capsuleBounds(in: anchor), primaryMaxY: primary.frame.maxY,
                 screens: screens.map { ReminderScreen(frame: $0.frame, visibleFrame: $0.visibleFrame) }, size: size) {
+            alignContent(trailing: point.x + size.width <= WeTypeCapsuleMatcher.capsuleBounds(in: anchor).minX)
             move(window, to: point)
             return
         }
@@ -120,6 +133,7 @@ enum VoiceLimitHUDLayout {
         let x = min(max(frame.minX + 12, desiredX), max(frame.minX + 12, frame.maxX - size.width - 12))
         let y = min(frame.minY + 88, max(frame.minY, frame.maxY - size.height - 12))
         let point = NSPoint(x: x, y: y)
+        alignContent(trailing: presentationState.position == .bottomTrailing)
         move(window, to: point)
     }
     private func move(_ window: NSWindow, to point: CGPoint) {
@@ -131,7 +145,16 @@ enum VoiceLimitHUDLayout {
 }
 
 private struct VoiceLimitHUD: View {
-    let presentation: VoiceLimitPresentation
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject var runtime: VoiceLimitReminderRuntime
+    let trailingAligned: Bool
+    private var presentation: VoiceLimitPresentation { runtime.state.presentation }
+    private var showsReleaseHint: Bool { runtime.state.showsReleaseHint }
+    private var expansionAnimation: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.24) }
+    private var expandedWidth: CGFloat {
+        if case .countdown = presentation { return VoiceLimitHUDLayout.expandedWidth }
+        return VoiceLimitHUDLayout.size.width
+    }
     private var urgent: Bool {
         if case .countdown(_, let urgent) = presentation { return urgent }
         return false
@@ -145,20 +168,45 @@ private struct VoiceLimitHUD: View {
         case .hidden: ""
         }
     }
-    var body: some View {
+    private var countdown: some View {
         HStack(spacing: 6) {
             Image(systemName: "mic.fill").font(.system(size: 12, weight: .medium))
                 .foregroundStyle(urgent ? .red : .orange)
                 .frame(width: 14)
             Text(title).font(.system(size: 12, weight: .semibold)).monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.9)
-            Spacer(minLength: 4)
-            Text("松开再按").font(.system(size: 11)).foregroundStyle(.secondary).fixedSize()
         }
-        .padding(.horizontal, 10).frame(width: VoiceLimitHUDLayout.size.width, height: VoiceLimitHUDLayout.size.height)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: VoiceLimitHUDLayout.cornerRadius))
-        .overlay(RoundedRectangle(cornerRadius: VoiceLimitHUDLayout.cornerRadius).strokeBorder(.primary.opacity(0.1), lineWidth: 0.5))
+        .fixedSize()
+        .frame(width: expandedWidth - (VoiceLimitHUDLayout.expandedWidth - VoiceLimitHUDLayout.compactWidth) - 20,
+               alignment: .leading)
+    }
+    private var hint: some View {
+        Text("松开再按").font(.system(size: 11)).foregroundStyle(.secondary).fixedSize()
+            .frame(width: VoiceLimitHUDLayout.expandedWidth - VoiceLimitHUDLayout.compactWidth,
+                   alignment: trailingAligned ? .leading : .trailing)
+            .opacity(showsReleaseHint ? 1 : 0)
+            .offset(x: showsReleaseHint ? 0 : (trailingAligned ? -8 : 8))
+            .accessibilityHidden(!showsReleaseHint)
+            .animation(expansionAnimation, value: showsReleaseHint)
+    }
+    var body: some View {
+        let alignment: Alignment = trailingAligned ? .trailing : .leading
+        let width = showsReleaseHint ? expandedWidth : VoiceLimitHUDLayout.compactWidth
+        HStack(spacing: 0) {
+            if trailingAligned { hint; countdown }
+            else { countdown; hint }
+        }
+        .padding(.horizontal, 10)
+        // Animate a reveal mask, not the hosting view's size or the countdown's layout.
+        .frame(width: VoiceLimitHUDLayout.size.width, height: VoiceLimitHUDLayout.size.height, alignment: alignment)
+        .background(.regularMaterial)
+        .overlay(alignment: alignment) {
+            Capsule().strokeBorder(.primary.opacity(0.1), lineWidth: 0.5).frame(width: width)
+                .animation(expansionAnimation, value: showsReleaseHint)
+        }
+        .mask(alignment: alignment) {
+            Capsule().frame(width: width).animation(expansionAnimation, value: showsReleaseHint)
+        }
         .accessibilityElement(children: .combine)
-        // No animation/ticker: respects Reduce Motion and never flashes or speaks.
     }
 }

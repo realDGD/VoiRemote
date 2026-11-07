@@ -55,7 +55,7 @@ struct VoiceAudioControls: View {
             }
             if store.configuration.voiceLimitReminderEnabled {
                 HStack {
-                    Stepper("开始显示：语音开始后 \(store.configuration.voiceLimitReminderStartSeconds) 秒", value: Binding(
+                    Stepper("展开操作提示：语音开始后 \(store.configuration.voiceLimitReminderStartSeconds) 秒", value: Binding(
                         get: { store.configuration.voiceLimitReminderStartSeconds },
                         set: { value in store.update { $0.voiceLimitReminderStartSeconds = value } }
                     ), in: VoiceLimitIndicator.startSecondsRange)
@@ -71,9 +71,9 @@ struct VoiceAudioControls: View {
                     Text("屏幕底部居中").tag(VoiceLimitReminderPosition.bottomCenter)
                     Text("屏幕右下角").tag(VoiceLimitReminderPosition.bottomTrailing)
                 }
-                Text("可设 0–55 秒，0 秒立即显示；默认 50 秒，最后 5 秒变红。测试可用 5 秒，完成后恢复默认。按约 60 秒单段时限估算，不会延长录音，也不影响键盘直接触发的语音。")
+                Text("倒计时随本段语音持续显示；“松开再按”默认在最后 10 秒展开，最后 5 秒变红。展开时间可设为语音开始后 0–55 秒，0 秒立即展开。按约 60 秒单段时限估算，不会延长录音，也不影响键盘直接触发的语音。")
                     .font(.caption).foregroundStyle(.secondary)
-                Text("倒计时出现后尝试跟随微信语音胶囊，并避开上方文字；未找到、位置不明确或微信版本不匹配时使用固定位置。预览只显示固定位置。")
+                Text("倒计时优先与微信绿色语音胶囊并排，并避开上方文字；空间不足时调整位置，未找到、位置不明确或微信版本不匹配时使用固定位置。预览演示 5 秒内展开，只显示固定位置。")
                     .font(.caption).foregroundStyle(.secondary)
             }
             LabeledContent("音频连接", value: audio.status)

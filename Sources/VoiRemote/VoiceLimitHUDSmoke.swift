@@ -22,9 +22,20 @@ import VoiRemoteMac
     func require(_ condition: Bool, _ message: String) throws {
         guard condition else { throw Failure(message: message) }
     }
+    func saveHUD(_ name: String) throws {
+        guard let flag = CommandLine.arguments.firstIndex(of: "--preview-directory"), CommandLine.arguments.indices.contains(flag + 1),
+              let view = NSApp.windows.first(where: { $0.title == "语音时限提醒" && $0.isVisible })?.contentView else { return }
+        view.layoutSubtreeIfNeeded()
+        guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        let directory = URL(fileURLWithPath: CommandLine.arguments[flag + 1], isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try bitmap.representation(using: .png, properties: [:])?.write(to: directory.appendingPathComponent(name + ".png"))
+    }
     guard let screen = NSScreen.screens.first else { throw Failure(message: "No screen") }
     let source = CapsuleSmokeSource()
-    let runtime = VoiceLimitReminderRuntime(clock: { 52 })
+    var now = 7.0
+    let runtime = VoiceLimitReminderRuntime(clock: { now })
     let hud = VoiceLimitHUDController(runtime: runtime, inspectionSource: source)
     defer { hud.shutdown() }
     let key = NSApp.keyWindow; let main = NSApp.mainWindow; let active = NSApp.isActive
@@ -41,10 +52,18 @@ import VoiRemoteMac
     let first = CGRect(x: appKitBounds.minX, y: screen.frame.maxY - appKitBounds.maxY, width: 350, height: 130)
     source.move(to: first)
     try await Task.sleep(for: .milliseconds(250))
-    let expected = VoiceReminderPlacement.following(topLeftWindow: first, primaryMaxY: screen.frame.maxY,
+    let expected = VoiceReminderPlacement.following(topLeftWindow: first, topLeftCapsule: WeTypeCapsuleMatcher.capsuleBounds(in: first), primaryMaxY: screen.frame.maxY,
         screens: NSScreen.screens.map { ReminderScreen(frame: $0.frame, visibleFrame: $0.visibleFrame) }, size: VoiceLimitHUDLayout.size)
         .map { CGPoint(x: $0.x.rounded(), y: $0.y.rounded()) }
     try require(expected != nil && hud.inspectionFrame?.origin == expected && hud.inspectionFrame != fixed, "Panel did not follow geometry")
+    try require(!runtime.state.showsReleaseHint, "Early countdown should remain compact")
+    try saveHUD("follow-compact")
+    now = 50; hud.configure(config)
+    try await Task.sleep(for: .milliseconds(350))
+    try require(runtime.state.showsReleaseHint && hud.inspectionFrame?.origin == expected, "Hint expansion moved the anchor")
+    try saveHUD("follow-expanded")
+    now = 55; hud.configure(config)
+    try require(runtime.state.presentation == .countdown(seconds: 5, urgent: true), "Urgent state missing")
 
     let moved = first.offsetBy(dx: 60, dy: -20)
     source.move(to: moved)
@@ -69,5 +88,5 @@ import VoiRemoteMac
     hud.shutdown()
     try await Task.sleep(for: .milliseconds(250))
     try require(hud.previewIsHidden && source.reads == count, "Shutdown revived panel/queries")
-    print("Synthetic capsule HUD smoke passed: real panel follows/moves, avoids text growth, restores fallback, stops queries; preview/shutdown and own focus unchanged; no foreign windows or hardware")
+    print("Synthetic capsule HUD smoke passed: compact/expanded/urgent states, stable expansion anchor, follows/moves, avoids text growth, restores fallback, stops queries; preview/shutdown and own focus unchanged; no foreign windows or hardware")
 }
