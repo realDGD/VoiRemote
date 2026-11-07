@@ -37,3 +37,10 @@
 ## 版本交付记录
 
 0.3.5已通过同仓库公开HTTPS tap，从固定源码f882b4e4a1eca10a4a5924cfa22ffb1ba275ab17、归档SHA-256 7033896c35d546dc96315b3dfc06344bb9b8ac058b922ee6c0b28c2c5f4cdad0编译升级至Applications。来源/签名/单份app检查通过，配置字节、向导及Dock偏好保留，自启动由原开启恢复为开启。此版本随后被上述真实定位问题触发的0.3.6修正取代；0.3.5检查不代替最终交付版本的CI或安装验收。
+
+
+0.3.6已从同一公开HTTPS tap完成源码升级，固定源码bc0e4857f9c4f723841d34782199b706ee54f600，归档SHA-256 7374768b73a9b26edce1b7a5131913e3a2eb6db1f891d95cace10449416b4d6e。Homebrew下载远端归档后实际执行106项核心、110项适配器检查及独立CLT Release编译，安装器日志确认自启动由原开启恢复为开启，无弃用钩子警告；没有从本地checkout安装。
+
+安装后的来源、严格签名、identifier-only指定要求、CLI版本、单Cask/单实体app与缓存清理检查通过。实际运行进程来自`/Applications/VoiRemote.app/Contents/MacOS/VoiRemote`。本次升级前新拍的配置字节、向导、Dock偏好和恢复标记摘要与升级后逐项相同，自启动保持enabled；未清设置、重置权限、创建证书或安装驱动。生成的本地开发app包已可恢复地移入废纸篓，不再与安装版并存于工作区。
+
+真实微信几何、跨屏和层级的用户确认是上节的独立定位原型验证；安装验收与完整音频回归仍按各自边界报告。最终交付还核对本记录提交对应的最新main [CI](https://github.com/realDGD/VoiRemote/actions/workflows/ci.yml)，不以旧0.3.4或中途版本的检查替代。来源标记中的源码提交只包含实际构建内容，后续纯文档或配方提交不改变应用代码。
