@@ -20,6 +20,8 @@ import VoiRemoteMac
 @MainActor private final class GeometryHarness {
     let source = GeometrySource()
     var jobs: [(Double, GeometryDeadline)] = []
+    var polls: [(Double, GeometryDeadline)] { jobs.filter { $0.0 == 0.2 } }
+    var initialWaits: [(Double, GeometryDeadline)] { jobs.filter { $0.0 == 2 } }
     lazy var follower = WeTypeCapsuleFollower(source: source, schedule: { [weak self] delay, action in
         let job = GeometryDeadline(action); self?.jobs.append((delay, job)); return job
     })
@@ -36,6 +38,52 @@ import VoiRemoteMac
         WeTypeGeometrySnapshot(version: version, windows: windows)
     }
     return [
+        ("initial search hides presentation until a delayed voice window is located", {
+            let h = GeometryHarness(); defer { h.follower.shutdown() }
+            h.follower.update(h.countdown())
+            let wait = h.initialWaits.last!.1
+            try check(!h.follower.state.canPresent && h.initialWaits.last!.0 == 2, "Initial fallback was immediately visible")
+            h.source.finish(.unavailable)
+            try check(!h.follower.state.canPresent, "First empty read exposed fallback")
+            h.polls.last!.1.action(); h.source.finish(snapshot([window()]))
+            try check(h.follower.state.canPresent && h.follower.anchor == window().bounds && wait.cancelled, "Located capsule did not release presentation or cancel wait")
+            wait.action()
+            try check(h.follower.anchor == window().bounds, "Cancelled wait replaced the located anchor")
+        }),
+        ("initial search timeout allows fallback and still follows a later window", {
+            let h = GeometryHarness(); defer { h.follower.shutdown() }
+            h.follower.update(h.countdown())
+            h.initialWaits.last!.1.action()
+            try check(h.follower.state.canPresent && h.follower.anchor == nil && h.polls.isEmpty, "Pending first read suppressed reminder forever")
+            h.source.finish(.unavailable)
+            h.polls.last!.1.action(); h.source.finish(snapshot([window()]))
+            try check(h.follower.state.canPresent && h.follower.anchor == window().bounds, "Late capsule could not replace fallback")
+        }),
+        ("release and repress invalidate old initial deadlines and reads", {
+            let h = GeometryHarness(); defer { h.follower.shutdown() }
+            h.follower.update(h.countdown()); let old = h.initialWaits.last!.1
+            h.follower.update(VoiceLimitReminderState()); old.action()
+            try check(old.cancelled && !h.follower.state.canPresent, "Release allowed a late fallback flash")
+            h.follower.update(h.countdown(epoch: 2)); let current = h.initialWaits.last!.1
+            old.action(); h.source.finish(snapshot([window()]))
+            try check(!h.follower.state.canPresent && h.follower.anchor == nil, "Old read or deadline exposed replacement segment")
+            h.source.finish(snapshot([window(2)]))
+            try check(current.cancelled && h.follower.state.canPresent && h.follower.anchor == window(2).bounds, "Replacement segment did not acquire its own anchor")
+            h.follower.update(h.countdown(epoch: 3)); let pending = h.initialWaits.last!.1
+            h.follower.shutdown(); pending.action(); h.source.finish(snapshot([window(3)]))
+            try check(pending.cancelled && !h.follower.state.canPresent && h.follower.anchor == nil, "Shutdown revived a waiting segment")
+        }),
+        ("cancellation from fallback readiness cannot revive polling", {
+            let h = GeometryHarness(); defer { h.follower.shutdown() }
+            let observation = h.follower.states.sink { state in
+                if state.canPresent && state.anchor == nil { h.follower.update(VoiceLimitReminderState()) }
+            }
+            h.follower.update(h.countdown()); h.source.finish(.unavailable)
+            let poll = h.polls.last!.1
+            h.initialWaits.last!.1.action(); poll.action()
+            try check(!h.follower.state.canPresent && poll.cancelled && h.source.reads == 1, "Reentrant timeout cancellation left active work")
+            observation.cancel()
+        }),
         ("observed 3.0.1 voice windows match and preserve the calibrated lower control", {
             var matcher = WeTypeCapsuleMatcher()
             let compact = window(1, CGRect(x: 100, y: 200, width: 200, height: 130))
@@ -106,14 +154,14 @@ import VoiRemoteMac
         ("follower bounds reads refreshes movement and falls back on disappearance", {
             let h = GeometryHarness(); defer { h.follower.shutdown() }
             h.follower.update(h.countdown()); h.follower.update(h.countdown())
-            try check(h.source.reads == 1 && h.jobs.isEmpty, "Duplicated in-flight read")
+            try check(h.source.reads == 1 && h.polls.isEmpty && h.initialWaits.count == 1, "Duplicated in-flight read or initial wait")
             h.source.finish(snapshot([window()]))
             try check(h.follower.anchor == window().bounds && h.jobs.last!.0 == 0.2, "Follow/refresh missing")
             h.jobs.last!.1.action(); try check(h.source.reads == 2, "No periodic refresh")
             let moved = window(1, CGRect(x: 400, y: 300, width: 300, height: 130))
             h.source.finish(snapshot([moved])); try check(h.follower.anchor == moved.bounds, "Position stayed stale")
             h.jobs.last!.1.action(); h.source.finish(.unavailable)
-            try check(h.follower.anchor == nil, "Lost target did not fall back")
+            try check(h.follower.anchor == nil && h.follower.state.canPresent, "Lost target did not allow immediate fallback")
             let pending = h.jobs.last!.1
             h.follower.update(VoiceLimitReminderState()); pending.action()
             try check(pending.cancelled && h.source.reads == 3, "Hidden follower kept polling")
@@ -122,7 +170,7 @@ import VoiRemoteMac
             let h = GeometryHarness()
             h.follower.update(h.countdown()); h.follower.update(h.countdown(epoch: 2))
             h.source.finish(snapshot([window()]))
-            try check(h.follower.anchor == nil && h.jobs.isEmpty, "Old segment result survived")
+            try check(h.follower.anchor == nil && h.polls.isEmpty, "Old segment result survived")
             h.source.finish(snapshot([window(9)])); let stale = h.jobs.last!.1
             h.follower.shutdown(); stale.action(); h.follower.update(h.countdown(epoch: 3))
             try check(h.follower.anchor == nil && h.source.reads == 2 && stale.cancelled, "Shutdown revived polling")
@@ -133,7 +181,7 @@ import VoiRemoteMac
                 if value != nil { h.follower.update(VoiceLimitReminderState()) }
             }
             h.follower.update(h.countdown()); h.source.finish(snapshot([window()]))
-            try check(h.follower.anchor == nil && h.jobs.isEmpty && h.source.reads == 1, "Reentrant cancellation left stale state")
+            try check(h.follower.anchor == nil && h.polls.isEmpty && !h.follower.state.canPresent && h.source.reads == 1, "Reentrant cancellation left stale state")
             observation.cancel()
         }),
         ("shutdown is terminal even when a subscriber tries to restart during anchor clearing", {

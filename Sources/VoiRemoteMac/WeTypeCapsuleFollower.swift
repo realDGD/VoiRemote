@@ -111,14 +111,26 @@ public struct WeTypeCapsuleMatcher: Sendable {
     }
 }
 
-/// One in-flight read and one cancellable wakeup; hidden/preview/end states perform no reads.
+public struct WeTypeCapsuleState: Equatable, Sendable {
+    public let anchor: CGRect?
+    public let canPresent: Bool
+    public init(anchor: CGRect? = nil, canPresent: Bool = false) {
+        self.anchor = anchor; self.canPresent = canPresent
+    }
+}
+
+/// One in-flight read, one poll and one initial search deadline; inactive states own no work.
 @MainActor public final class WeTypeCapsuleFollower {
-    private let anchorSubject = CurrentValueSubject<CGRect?, Never>(nil)
-    public var anchor: CGRect? { anchorSubject.value }
-    public var anchors: AnyPublisher<CGRect?, Never> { anchorSubject.eraseToAnyPublisher() }
+    public static let initialSearchTimeout: TimeInterval = 2
+    private let stateSubject = CurrentValueSubject<WeTypeCapsuleState, Never>(WeTypeCapsuleState())
+    public var state: WeTypeCapsuleState { stateSubject.value }
+    public var anchor: CGRect? { state.anchor }
+    public var states: AnyPublisher<WeTypeCapsuleState, Never> { stateSubject.eraseToAnyPublisher() }
+    public var anchors: AnyPublisher<CGRect?, Never> { states.map(\.anchor).removeDuplicates().eraseToAnyPublisher() }
     private let source: any WeTypeWindowSource
     private let schedule: VoiceLimitReminderRuntime.Schedule
     private var deadline: (any VoiceLimitDeadline)?
+    private var initialDeadline: (any VoiceLimitDeadline)?
     private var matcher = WeTypeCapsuleMatcher()
     private var active = false
     private var epoch: UInt64 = 0
@@ -136,17 +148,29 @@ public struct WeTypeCapsuleMatcher: Sendable {
         let wanted = allowed && state.mayFollowCapsule
         guard wanted != active || (wanted && state.displayEpoch != epoch) else { return }
         generation &+= 1; deadline?.cancel(); deadline = nil
+        initialDeadline?.cancel(); initialDeadline = nil
         matcher.clear(); active = wanted; epoch = state.displayEpoch
         let token = generation
-        if anchor != nil { anchorSubject.send(nil) }
-        if active, !stopped, generation == token { read() }
+        publish(WeTypeCapsuleState())
+        if active, !stopped, generation == token {
+            initialDeadline = schedule(Self.initialSearchTimeout) { [weak self] in
+                guard let self, self.active, !self.stopped, self.generation == token else { return }
+                self.initialDeadline = nil
+                self.publish(WeTypeCapsuleState(anchor: self.anchor, canPresent: true))
+            }
+            read()
+        }
     }
     public func shutdown() {
         guard !stopped else { return }
         // Mark terminal before publishing nil: a subscriber cannot restart us during delivery.
         stopped = true; active = false; generation &+= 1
         deadline?.cancel(); deadline = nil; matcher.clear()
-        if anchor != nil { anchorSubject.send(nil) }
+        initialDeadline?.cancel(); initialDeadline = nil
+        publish(WeTypeCapsuleState())
+    }
+    private func publish(_ value: WeTypeCapsuleState) {
+        if state != value { stateSubject.send(value) }
     }
     private func read() {
         guard active, !stopped else { return }
@@ -154,7 +178,8 @@ public struct WeTypeCapsuleMatcher: Sendable {
         source.read { [weak self] snapshot in
             guard let self, self.active, !self.stopped, self.generation == token else { return }
             let next = self.matcher.select(snapshot)
-            if self.anchor != next { self.anchorSubject.send(next) }
+            if next != nil { self.initialDeadline?.cancel(); self.initialDeadline = nil }
+            self.publish(WeTypeCapsuleState(anchor: next, canPresent: next != nil || self.state.canPresent))
             guard self.active, !self.stopped, self.generation == token else { return }
             self.deadline = self.schedule(0.2) { [weak self] in
                 guard let self, self.active, !self.stopped, self.generation == token else { return }
