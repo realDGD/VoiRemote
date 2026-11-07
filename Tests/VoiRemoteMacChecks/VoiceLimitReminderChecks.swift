@@ -35,13 +35,15 @@ import VoiRemoteMac
                 try check((h.runtime.state.presentation != .hidden) == active && (!h.jobs.isEmpty) == active, "A disabled capability scheduled or showed a warning")
             } } }
         }),
-        ("reminder defaults allocate no deadlines and enabled countdown wakes only near limit", {
+        ("reminder defaults allocate no deadlines and enabled countdown persists with a delayed hint", {
             let h = ReminderHarness(); defer { h.runtime.shutdown() }
             h.runtime.update(h.segment(1, at: 0))
             try check(h.jobs.isEmpty && h.runtime.state.presentation == .hidden, "Defaults scheduled work")
             h.enable()
-            try check(h.jobs.count == 1 && h.jobs.last!.0 == 50, "Prewarning polls or wrong origin")
-            h.fire(); try check(h.runtime.state.presentation == .countdown(seconds: 10, urgent: false), "50 second warning missing")
+            try check(h.jobs.count == 1 && h.jobs.last!.0 == 1 && h.runtime.state.presentation == .countdown(seconds: 60, urgent: false), "Countdown missing at START")
+            for _ in 0..<49 { h.fire() }
+            try check(!h.runtime.state.showsReleaseHint, "Action hint appeared early")
+            h.fire(); try check(h.runtime.state.presentation == .countdown(seconds: 10, urgent: false) && h.runtime.state.showsReleaseHint, "50 second hint missing")
             let epoch = h.runtime.state.displayEpoch
             for _ in 0..<5 { h.fire() }
             try check(h.runtime.state.presentation == .countdown(seconds: 5, urgent: true) && h.runtime.state.displayEpoch == epoch, "Urgency or fixed-screen epoch wrong")
@@ -56,29 +58,31 @@ import VoiRemoteMac
             let oldHide = h.jobs.last!.1
             h.now = 61; h.runtime.update(h.segment(2, at: 61)); let count = h.jobs.count
             oldWake.action(); oldHide.action()
-            try check(h.runtime.state.presentation == .hidden && h.jobs.count == count && h.jobs.last!.0 == 111, "Stale work modified new segment")
-            h.fire(); try check(h.runtime.state.presentation == .countdown(seconds: 10, urgent: false), "New warning lost")
+            try check(h.runtime.state.presentation == .countdown(seconds: 60, urgent: false) && !h.runtime.state.showsReleaseHint && h.jobs.count == count && h.jobs.last!.0 == 62, "Stale work modified new segment")
+            h.fire(); try check(h.runtime.state.presentation == .countdown(seconds: 59, urgent: false), "New countdown lost")
         }),
-        ("changing appearance time preserves the active segment and preview stays five seconds", {
+        ("changing hint time preserves the persistent segment and preview demonstrates expansion", {
             let h = ReminderHarness(); defer { h.runtime.shutdown() }
             h.enable(startAfter: 5); h.runtime.update(h.segment(1, at: 0))
-            try check(h.jobs.last!.0 == 5 && h.runtime.state.presentation == .hidden, "Custom start polled early")
-            h.fire(); let epoch = h.runtime.state.displayEpoch
-            try check(h.runtime.state.presentation == .countdown(seconds: 55, urgent: false), "Quick test shortened the estimated limit")
+            try check(h.jobs.last!.0 == 1 && !h.runtime.state.showsReleaseHint, "Custom hint hid the countdown")
+            for _ in 0..<5 { h.fire() }; let epoch = h.runtime.state.displayEpoch
+            try check(h.runtime.state.presentation == .countdown(seconds: 55, urgent: false) && h.runtime.state.showsReleaseHint, "Quick hint test changed the estimated limit")
             h.now = 10; h.enable()
-            try check(h.runtime.state.presentation == .hidden && h.jobs.last!.0 == 50, "Restoring default kept an early warning")
+            try check(h.runtime.state.presentation == .countdown(seconds: 50, urgent: false) && !h.runtime.state.showsReleaseHint && h.jobs.last!.0 == 11, "Restoring hint default hid the countdown or retained early text")
             h.enable(startAfter: 0)
-            try check(h.runtime.state.presentation == .countdown(seconds: 50, urgent: false) && h.runtime.state.displayEpoch == epoch, "Appearance change restarted the voice segment")
+            try check(h.runtime.state.presentation == .countdown(seconds: 50, urgent: false) && h.runtime.state.showsReleaseHint && h.runtime.state.displayEpoch == epoch, "Hint change restarted the voice segment")
             h.now = 60; h.jobs.last!.1.action()
             try check(h.runtime.state.presentation == .approachingLimit, "Start setting extended sixty seconds")
             h.enable(startAfter: 55); h.runtime.preview()
-            try check(h.runtime.state.presentation == .countdown(seconds: 8, urgent: false) && h.runtime.state.isPreview, "Late start hid the preview")
-            for _ in 0..<5 { h.fire() }
+            try check(h.runtime.state.presentation == .countdown(seconds: 12, urgent: false) && h.runtime.state.isPreview && !h.runtime.state.showsReleaseHint, "Preview should begin compact")
+            h.fire(); h.fire()
+            try check(h.runtime.state.showsReleaseHint && !h.runtime.state.mayFollowCapsule, "Preview did not expand independently of saved threshold")
+            for _ in 0..<3 { h.fire() }
             try check(!h.runtime.state.isPreview && h.runtime.state.presentation == .approachingLimit, "Preview did not expire back to the real segment")
         }),
         ("preview expires without hardware and is cancelled by configuration and live events", {
             let h = ReminderHarness(); defer { h.runtime.shutdown() }
-            h.runtime.preview(); try check(h.runtime.state.presentation == .countdown(seconds: 8, urgent: false), "Preview needs hardware")
+            h.runtime.preview(); try check(h.runtime.state.presentation == .countdown(seconds: 12, urgent: false), "Preview needs hardware")
             for _ in 0..<5 { h.fire() }
             try check(h.runtime.state.presentation == .hidden && h.jobs.last!.1.cancelled, "Preview outlived five seconds")
             h.runtime.preview(); let stale = h.jobs.last!.1

@@ -15,6 +15,15 @@ public enum VoiceLimitPresentation: Equatable, Sendable {
     case approachingLimit
     case ended
     case endedUnconfirmed
+
+    public func showsReleaseHint(after seconds: Int) -> Bool {
+        guard VoiceLimitIndicator.startSecondsRange.contains(seconds) else { return false }
+        switch self {
+        case .countdown(let remaining, _): return remaining <= 60 - seconds
+        case .approachingLimit, .ended, .endedUnconfirmed: return true
+        case .hidden: return false
+        }
+    }
 }
 
 /// Pure presentation policy. Owns no timers, windows, Bluetooth, audio or input devices.
@@ -53,21 +62,19 @@ public struct VoiceLimitIndicator: Equatable, Sendable {
     }
     private mutating func clearActive() { segmentID = nil; beganAt = nil; endedAt = nil; supported = false }
 
-    public func presentation(at time: TimeInterval, startAfter: Int = defaultStartSeconds) -> VoiceLimitPresentation {
-        guard Self.startSecondsRange.contains(startAfter), time.isFinite, supported, let beganAt, time >= beganAt else { return .hidden }
+    public func presentation(at time: TimeInterval) -> VoiceLimitPresentation {
+        guard time.isFinite, supported, let beganAt, time >= beganAt else { return .hidden }
         if let endedAt { return time >= endedAt && time < endedAt + 3 ? (confirmedEnd ? .ended : .endedUnconfirmed) : .hidden }
         let elapsed = time - beganAt
-        guard elapsed >= Double(startAfter) else { return .hidden }
         guard elapsed < 60 else { return .approachingLimit }
         let seconds = Int(ceil(60 - elapsed))
         return .countdown(seconds: seconds, urgent: elapsed >= 55)
     }
     /// The owner can sleep until the next visible change instead of polling throughout a recording.
-    public func nextUpdate(at time: TimeInterval, startAfter: Int = defaultStartSeconds) -> TimeInterval? {
-        guard Self.startSecondsRange.contains(startAfter), time.isFinite, supported, let beganAt, time >= beganAt else { return nil }
+    public func nextUpdate(at time: TimeInterval) -> TimeInterval? {
+        guard time.isFinite, supported, let beganAt, time >= beganAt else { return nil }
         if let endedAt { return time < endedAt + 3 ? endedAt + 3 : nil }
         let elapsed = time - beganAt
-        if elapsed < Double(startAfter) { return beganAt + Double(startAfter) }
         if elapsed < 60 { return beganAt + min(60, floor(elapsed) + 1) }
         return nil
     }

@@ -191,7 +191,7 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
             let reminderKeyBefore = NSApp.keyWindow
             let reminderActiveBefore = NSApp.isActive
             if CommandLine.arguments.contains("--smoke-test-reminder") { reminder.preview() }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + (CommandLine.arguments.contains("--smoke-test-reminder") ? 1 : 2)) {
                 if CommandLine.arguments.contains("--smoke-test-background") {
                     guard self.backgroundProbePassed else {
                         fputs("Background smoke failed: configuration did not reach owner before window creation\n", stderr); exit(1)
@@ -210,7 +210,7 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
                     exit(1)
                 }
                 if CommandLine.arguments.contains("--smoke-test-reminder"),
-                   !self.reminder.previewIsNonactivating || NSApp.keyWindow !== reminderKeyBefore || NSApp.isActive != reminderActiveBefore {
+                   !self.reminder.previewIsNonactivating || self.reminder.runtime.state.showsReleaseHint || NSApp.keyWindow !== reminderKeyBefore || NSApp.isActive != reminderActiveBefore {
                     fputs("UI smoke failed: voice reminder is missing, interactive or key/main\n", stderr)
                     exit(1)
                 }
@@ -220,19 +220,19 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
                 if CommandLine.arguments.contains("--smoke-test-reminder") {
                     let keyWindow = NSApp.keyWindow
                     let active = NSApp.isActive
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                        guard case .countdown(_, true) = self.reminder.runtime.state.presentation,
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        guard self.reminder.runtime.state.showsReleaseHint,
                               self.reminder.previewIsNonactivating, NSApp.keyWindow === keyWindow, NSApp.isActive == active else {
-                            fputs("Reminder smoke failed: urgent state or focus changed\n", stderr); exit(1)
+                            fputs("Reminder smoke failed: hint expansion or focus changed\n", stderr); exit(1)
                         }
                         if let flag = CommandLine.arguments.firstIndex(of: "--preview-directory"), CommandLine.arguments.indices.contains(flag + 1) {
-                            self.savePreviews(to: URL(fileURLWithPath: CommandLine.arguments[flag + 1], isDirectory: true).appendingPathComponent("urgent"))
+                            self.savePreviews(to: URL(fileURLWithPath: CommandLine.arguments[flag + 1], isDirectory: true).appendingPathComponent("expanded"))
                         }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.1) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                             guard self.reminder.previewIsHidden, NSApp.keyWindow === keyWindow, NSApp.isActive == active else {
                                 fputs("Reminder smoke failed: preview did not hide or focus changed\n", stderr); exit(1)
                             }
-                            print("Reminder lifecycle smoke passed: panel visible, urgent, hidden after five seconds; key/main and activation unchanged; click-through property true")
+                            print("Reminder lifecycle smoke passed: compact panel, expanded hint, hidden after five seconds; key/main and activation unchanged; click-through property true")
                             Task { @MainActor in
                                 do {
                                     try await smokeCapsuleFollowing()

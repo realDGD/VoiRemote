@@ -60,12 +60,12 @@ import VoiRemoteMac
             let h = GeometryHarness(); defer { h.follower.shutdown() }
             h.follower.update(VoiceLimitReminderState())
             var state = h.countdown(); state.isPreview = true; h.follower.update(state)
-            state.isPreview = false; state.presentation = .approachingLimit; h.follower.update(state)
+            state.isPreview = false
             state.presentation = .endedUnconfirmed; h.follower.update(state)
             h.follower.update(h.countdown(), allowed: false)
             try check(h.source.reads == 0 && h.jobs.isEmpty, "Inactive mode queried another app")
         }),
-        ("real reminder timing opens queries only from the configured start until sixty seconds", {
+        ("live tracking begins at START independently of hint timing and ends only with the segment", {
             for start in [0, 5, 50, 55] {
             let h = GeometryHarness()
             var now = 0.0
@@ -81,18 +81,17 @@ import VoiRemoteMac
             runtime.configure(config)
             var segment = VoiceLimitIndicator(); segment.begin(segment: 1, at: 0, hasRC003Limit: true)
             runtime.update(segment)
-            if start > 0 {
-                now = Double(start) - 0.01
-                try check(h.source.reads == 0 && jobs.last!.0 == Double(start), "Read windows before configured warning")
-                now = Double(start); jobs.last!.1.action()
-            }
-            try check(h.source.reads == 1, "Configured countdown did not query")
+            try check(h.source.reads == 1 && runtime.state.presentation == .countdown(seconds: 60, urgent: false), "Persistent countdown did not query at START")
             h.source.finish(snapshot([window()])); let pending = h.jobs.last!.1
             now = 60; jobs.last!.1.action()
             pending.action()
-            try check(runtime.state.presentation == .approachingLimit && h.source.reads == 1 && pending.cancelled && h.follower.anchor == nil, "60 second state retained tracking")
+            try check(runtime.state.presentation == .approachingLimit && h.source.reads == 2 && !pending.cancelled, "Estimated expiry prematurely stopped tracking")
+            segment.end(segment: 1, reason: .reportedDeviceLimit, at: now); runtime.update(segment)
+            let jobCount = h.jobs.count
+            h.source.finish(snapshot([window()]))
+            try check(h.follower.anchor == nil && h.jobs.count == jobCount, "Actual STOP retained an anchor or scheduled a stale query")
             runtime.preview()
-            try check(h.source.reads == 1 && runtime.state.isPreview, "Preview queried live windows")
+            try check(h.source.reads == 2 && runtime.state.isPreview, "Preview queried live windows")
             }
         }),
         ("follower bounds reads refreshes movement and falls back on disappearance", {

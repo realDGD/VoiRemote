@@ -9,6 +9,7 @@ public struct AppConfiguration: Codable, Equatable, Sendable {
     public var remoteAudioEnabled = false
     public var preferVirtualInput = false
     public var voiceLimitReminderEnabled = false
+    /// Legacy storage name: seconds before revealing the action hint, not the countdown.
     public var voiceLimitReminderStartSeconds = VoiceLimitIndicator.defaultStartSeconds
     public var voiceLimitReminderPosition: VoiceLimitReminderPosition = .bottomCenter
     public var voiceTrigger: VoiceTrigger = .function

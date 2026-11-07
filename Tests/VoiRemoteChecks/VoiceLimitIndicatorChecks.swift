@@ -13,8 +13,9 @@ func voiceLimitIndicatorChecks() -> [(String, () throws -> Void)] {
         ("voice warning follows monotonic segment time and never invents a stop", {
             var indicator = VoiceLimitIndicator()
             indicator.begin(segment: 1, at: 100, hasRC003Limit: true)
-            try expect(indicator.presentation(at: 149.99) == .hidden, "Warning appeared before 50 seconds")
-            try expect(indicator.nextUpdate(at: 100) == 150, "Idle phase needs unnecessary polling")
+            try expect(indicator.presentation(at: 100) == .countdown(seconds: 60, urgent: false), "Countdown missing at real START")
+            try expect(indicator.presentation(at: 149.99) == .countdown(seconds: 11, urgent: false), "Countdown hidden before the hint")
+            try expect(indicator.nextUpdate(at: 100) == 101, "Countdown first tick drifted")
             try expect(indicator.presentation(at: 150) == .countdown(seconds: 10, urgent: false), "50 second warning missing")
             try expect(indicator.presentation(at: 154.99) == .countdown(seconds: 6, urgent: false), "Warning rounded down too early")
             try expect(indicator.presentation(at: 155) == .countdown(seconds: 5, urgent: true), "Final five second state missing")
@@ -36,20 +37,20 @@ func voiceLimitIndicatorChecks() -> [(String, () throws -> Void)] {
                 try expect(other.presentation(at: 60) == .hidden, "An ordinary stop was mislabeled as a device limit")
             }
         }),
-        ("custom appearance thresholds change visibility without moving the voice limit", {
+        ("custom thresholds reveal only the action hint without moving the voice limit", {
             var indicator = VoiceLimitIndicator(); indicator.begin(segment: 1, at: 100, hasRC003Limit: true)
             for start in [0, 5, 50, 55] {
                 let time = 100 + Double(start)
                 if start > 0 {
-                    try expect(indicator.presentation(at: time - 0.01, startAfter: start) == .hidden, "Appeared before selected threshold")
-                    try expect(indicator.nextUpdate(at: 100, startAfter: start) == time, "Wrong first wakeup")
+                    try expect(!indicator.presentation(at: time - 0.01).showsReleaseHint(after: start), "Hint appeared before selected threshold")
                 }
-                try expect(indicator.presentation(at: time, startAfter: start) == .countdown(seconds: 60 - start, urgent: start >= 55), "Countdown was rebased to the appearance time")
-                try expect(indicator.presentation(at: 155, startAfter: start) == .countdown(seconds: 5, urgent: true), "Urgency shifted with appearance")
-                try expect(indicator.presentation(at: 160, startAfter: start) == .approachingLimit && indicator.nextUpdate(at: 160, startAfter: start) == nil, "Custom start extended the voice limit")
+                try expect(indicator.presentation(at: time).showsReleaseHint(after: start), "Action hint did not appear")
+                try expect(indicator.presentation(at: time) == .countdown(seconds: 60 - start, urgent: start >= 55), "Countdown was rebased to the hint time")
+                try expect(indicator.presentation(at: 155) == .countdown(seconds: 5, urgent: true), "Urgency shifted with hint")
+                try expect(indicator.presentation(at: 160) == .approachingLimit && indicator.nextUpdate(at: 160) == nil, "Hint setting extended the voice limit")
             }
             for invalid in [-1, 56, Int.max] {
-                try expect(indicator.presentation(at: 155, startAfter: invalid) == .hidden && indicator.nextUpdate(at: 155, startAfter: invalid) == nil, "Invalid threshold scheduled work")
+                try expect(!indicator.presentation(at: 155).showsReleaseHint(after: invalid), "Invalid threshold exposed hint")
             }
         }),
         ("duplicate starts and late ends cannot rebase or hide a new voice warning", {
