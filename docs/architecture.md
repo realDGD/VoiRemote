@@ -72,8 +72,8 @@ SDK 27 的裸 `@State` 依赖 CLT 不附带的 SwiftUIMacros；`ViewState<Value>
 
 `ApplicationDelegate`强持有`ConfigurationStore`、`RemoteMappingRuntime`及`VoiceLimitHUDController`，在delegate初始化时建立配置/音频订阅。配置应用不依赖任何窗口onAppear，菜单栏冷启动和关闭设置后仍有效。控制器延迟创建一个NSPanel与复用的SwiftUI内容，非激活、穿透、无声；真实段开始固定回退屏幕，屏幕消失时重选。睡眠取消，唤醒不恢复旧段；退出清理任务、订阅、观察者和窗口。开关同时要求语音及虚拟麦克风启用，预览独立于设备。RC003档案由用户明确开启，不能用共享HID身份自动确认型号。实际原因与未覆盖场景见[决策](../.agents/notes/implemented/feature/2026-10-28-rc003-voice-limit-indicator.md)。
 
-`WeTypeCapsuleFollower`在真实段可见期间，每次读完200ms后安排下一次查询；后台`SystemWeTypeWindowSource`最多一个在途窗口列表查询，只提取微信进程的数字元数据。估算到60秒仍跟随，实际STOP、松开、隐藏、预览、取消、睡眠和退出不续扫。`WeTypeCapsuleMatcher`按3.0.0实测轮廓保守匹配，失败或歧义清除锚点；`capsuleBounds`使用该版本截图档案估算透明窗口内底部88×36pt按钮及24pt底边距。
+`WeTypeCapsuleFollower`在真实段可见期间，每次读完200ms后安排下一次查询；后台`SystemWeTypeWindowSource`最多一个在途窗口列表查询，只提取微信进程的数字元数据。估算到60秒仍跟随，实际STOP、松开、隐藏、预览、取消、睡眠和退出不续扫。`WeTypeCapsuleMatcher`按3.0.0/3.0.1的已知紧凑轮廓保守匹配，失败或歧义清除锚点；`capsuleBounds`使用该版本截图档案估算透明窗口内底部88×36pt按钮及64pt底边距。
 
-Core的`VoiceReminderPlacement`转换CG/AppKit坐标，右侧并排优先、再左侧，垂直对齐绿色按钮中心，并避开整个上方文字区域；无法并排时尝试上下，不安全则回退固定位置。面板始终预留192×34pt安全空间，SwiftUI只绘制104pt短胶囊，提示出现时以0.24秒展开到164pt；结束或接近时限等较长状态使用192pt以免截字；左侧布局从靠近绿色按钮的一边向外展开，系统减少动态效果时不动画。预留空间防止展开时跳到另一侧或压住文字，透明区域保持鼠标穿透。位置订阅只移动面板，SwiftUI直接观察现有提醒运行时，只有布局方向改变时替换根视图，不每秒或每200ms重建根视图；展示快照、代次和取消后的复核防止旧查询或订阅重入复活旧段。
+Core的`VoiceReminderPlacement`转换CG/AppKit坐标，右侧并排优先、再左侧，垂直对齐绿色按钮中心，并避开整个上方文字区域；无法并排时尝试上下，不安全则回退固定位置。面板始终预留192×34pt安全空间，SwiftUI只绘制104pt短胶囊，提示出现时以0.24秒展开到164pt；结束或接近时限等较长状态使用192pt以免截字；左侧布局从靠近绿色按钮的一边向外展开，系统减少动态效果时不动画。预留空间防止展开时跳到另一侧或压住文字，透明区域保持鼠标穿透。`screenIndex`按绿色按钮覆盖面积选择屏幕；控制器记录该屏幕供定位丢失后的固定回退使用，忽略鼠标后续跨屏移动。仅首次未识别时以鼠标屏幕选择回退。面板使用与已识别微信语音窗口相同的`maximumWindow-2`层级，取代普通floating层级，不激活窗口或反复抢前台。位置订阅只移动面板，SwiftUI直接观察现有提醒运行时，只有布局方向改变时替换根视图，不每秒或每200ms重建根视图；展示快照、代次和取消后的复核防止旧查询或订阅重入复活旧段。
 
 无需读文字、剪贴板或申请新权限，不改变音频/输入事务。代价是开启提醒后的定位覆盖整个语音段，而非仅最后10秒；空闲、关闭能力和键盘直接触发仍无定位查询。理由见[跟随决策](../.agents/notes/implemented/feature/2026-10-29-follow-wetype-capsule.md)，新原生与真机边界见[验证记录](validation/2026-11-07-persistent-voice-countdown.md)。

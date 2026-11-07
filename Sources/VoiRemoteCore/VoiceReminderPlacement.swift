@@ -16,6 +16,16 @@ public enum VoiceReminderPlacement {
             && rect.width > 0 && rect.height > 0
     }
 
+    public static func screenIndex(containingTopLeftRect rect: CGRect, primaryMaxY: CGFloat,
+                                   screens: [ReminderScreen]) -> Int? {
+        guard isUsable(rect), primaryMaxY.isFinite else { return nil }
+        let converted = CGRect(x: rect.minX, y: primaryMaxY - rect.maxY, width: rect.width, height: rect.height)
+        let candidates = screens.indices.filter { isUsable(screens[$0].frame) && isUsable(screens[$0].visibleFrame) }
+        guard let index = candidates.max(by: { area(screens[$0].frame.intersection(converted)) < area(screens[$1].frame.intersection(converted)) }),
+              area(screens[index].frame.intersection(converted)) > 0 else { return nil }
+        return index
+    }
+
     public static func following(topLeftWindow: CGRect, topLeftCapsule: CGRect, primaryMaxY: CGFloat,
                                  screens: [ReminderScreen], size: CGSize) -> CGPoint? {
         guard isUsable(topLeftWindow), isUsable(topLeftCapsule), topLeftWindow.contains(topLeftCapsule), primaryMaxY.isFinite,
@@ -24,9 +34,8 @@ public enum VoiceReminderPlacement {
                             width: topLeftWindow.width, height: topLeftWindow.height)
         let capsule = CGRect(x: topLeftCapsule.minX, y: primaryMaxY - topLeftCapsule.maxY,
                              width: topLeftCapsule.width, height: topLeftCapsule.height)
-        let candidates = screens.filter { isUsable($0.frame) && isUsable($0.visibleFrame) }
-        guard let screen = candidates.max(by: { area($0.frame.intersection(anchor)) < area($1.frame.intersection(anchor)) }),
-              area(screen.frame.intersection(anchor)) > 0 else { return nil }
+        guard let index = screenIndex(containingTopLeftRect: topLeftCapsule, primaryMaxY: primaryMaxY, screens: screens) else { return nil }
+        let screen = screens[index]
         let safe = screen.visibleFrame.intersection(screen.frame).insetBy(dx: 12, dy: 12)
         guard isUsable(safe), size.width <= safe.width, size.height <= safe.height else { return nil }
         let gap: CGFloat = 8

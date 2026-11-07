@@ -24,15 +24,16 @@ public struct WeTypeGeometrySnapshot: Sendable {
 
 /// A conservative local-version profile, not a claim about WeType's private window classes.
 public struct WeTypeCapsuleMatcher: Sendable {
-    public static let supportedVersion = "3.0.0"
+    public static let supportedVersions: Set<String> = ["3.0.0", "3.0.1"]
+    public static let windowLayer = Int(CGWindowLevelForKey(.maximumWindow)) - 2
     private var selectedID: UInt32?
     public init() {}
     public mutating func clear() { selectedID = nil }
     public mutating func select(_ snapshot: WeTypeGeometrySnapshot) -> CGRect? {
-        guard snapshot.version == Self.supportedVersion else { clear(); return nil }
+        guard let version = snapshot.version, Self.supportedVersions.contains(version) else { clear(); return nil }
         let visible = snapshot.windows.filter {
             $0.onScreen && $0.alpha.isFinite && $0.alpha > 0
-                && $0.layer == Int(CGWindowLevelForKey(.maximumWindow)) - 2
+                && $0.layer == Self.windowLayer
                 && VoiceReminderPlacement.isUsable($0.bounds)
         }
         if let selectedID, let existing = visible.first(where: { $0.id == selectedID }),
@@ -51,10 +52,10 @@ public struct WeTypeCapsuleMatcher: Sendable {
         (199...351).contains(bounds.width)
             && (abs(bounds.height - 130) <= 1 || abs(bounds.height - 180) <= 1)
     }
-    /// WeType 3.0.0's compact control sits inside a larger transparent window.
-    /// This visual profile follows the supplied screenshots, not a public WeType API.
+    /// The green control has a 64pt transparent lower margin in the observed 3.0.x window.
+    /// This visual calibration is not a public WeType API.
     public static func capsuleBounds(in window: CGRect) -> CGRect {
-        CGRect(x: window.midX - 44, y: window.maxY - 60, width: 88, height: 36)
+        CGRect(x: window.midX - 44, y: window.maxY - 100, width: 88, height: 36)
     }
 }
 
@@ -81,7 +82,7 @@ public struct WeTypeCapsuleMatcher: Sendable {
             }
             cachedApplication = (pid, version)
         }
-        guard let version = cachedApplication?.version, version == WeTypeCapsuleMatcher.supportedVersion else {
+        guard let version = cachedApplication?.version, WeTypeCapsuleMatcher.supportedVersions.contains(version) else {
             completion(.unavailable); return
         }
         querying = true

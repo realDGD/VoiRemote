@@ -10,6 +10,13 @@ func voiceReminderPlacementChecks() -> [(String, () throws -> Void)] {
             primaryMaxY: 900, screens: screens ?? [primary], size: size)
     }
     return [
+        ("target screen follows the green control even when upper text lies on another display", {
+            let above = ReminderScreen(frame: CGRect(x: 0, y: 900, width: 1440, height: 800), visibleFrame: CGRect(x: 0, y: 900, width: 1440, height: 780))
+            let window = CGRect(x: 400, y: -300, width: 350, height: 400)
+            let capsule = CGRect(x: 531, y: 40, width: 88, height: 36)
+            try expect(VoiceReminderPlacement.screenIndex(containingTopLeftRect: capsule, primaryMaxY: 900, screens: [primary, above]) == 0, "Text bubble selected the wrong display")
+            try expect(place(window, capsule, screens: [primary, above]) == CGPoint(x: 627, y: 825), "Control and reminder used different displays")
+        }),
         ("reminder sits beside the green control and ignores upward text growth", {
             let capsule = CGRect(x: 456, y: 570, width: 88, height: 36)
             let a = place(CGRect(x: 400, y: 500, width: 200, height: 130), capsule)

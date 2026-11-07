@@ -10,7 +10,7 @@ import VoiRemoteMac
         reads += 1; completion(snapshot)
     }
     func move(to bounds: CGRect) {
-        snapshot = WeTypeGeometrySnapshot(version: "3.0.0", windows: [
+        snapshot = WeTypeGeometrySnapshot(version: "3.0.1", windows: [
             WeTypeWindowGeometry(id: 1, bounds: bounds, layer: Int(CGWindowLevelForKey(.maximumWindow)) - 2)
         ])
     }
@@ -32,7 +32,8 @@ import VoiRemoteMac
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try bitmap.representation(using: .png, properties: [:])?.write(to: directory.appendingPathComponent(name + ".png"))
     }
-    guard let screen = NSScreen.screens.first else { throw Failure(message: "No screen") }
+    guard let primary = NSScreen.screens.first else { throw Failure(message: "No screen") }
+    let screen = NSScreen.screens.first { !NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? primary
     let source = CapsuleSmokeSource()
     var now = 7.0
     let runtime = VoiceLimitReminderRuntime(clock: { now })
@@ -47,12 +48,13 @@ import VoiRemoteMac
     try await Task.sleep(for: .milliseconds(250))
     let fixed = hud.inspectionFrame
     try require(fixed?.size == VoiceLimitHUDLayout.size && source.reads > 0, "Missing panel/fallback or inconsistent compact size")
+    try require(hud.inspectionLevel == WeTypeCapsuleMatcher.windowLayer, "Reminder is below the voice window level")
 
     let appKitBounds = CGRect(x: screen.visibleFrame.midX - 175, y: screen.visibleFrame.midY, width: 350, height: 130)
-    let first = CGRect(x: appKitBounds.minX, y: screen.frame.maxY - appKitBounds.maxY, width: 350, height: 130)
+    let first = CGRect(x: appKitBounds.minX, y: primary.frame.maxY - appKitBounds.maxY, width: 350, height: 130)
     source.move(to: first)
     try await Task.sleep(for: .milliseconds(250))
-    let expected = VoiceReminderPlacement.following(topLeftWindow: first, topLeftCapsule: WeTypeCapsuleMatcher.capsuleBounds(in: first), primaryMaxY: screen.frame.maxY,
+    let expected = VoiceReminderPlacement.following(topLeftWindow: first, topLeftCapsule: WeTypeCapsuleMatcher.capsuleBounds(in: first), primaryMaxY: primary.frame.maxY,
         screens: NSScreen.screens.map { ReminderScreen(frame: $0.frame, visibleFrame: $0.visibleFrame) }, size: VoiceLimitHUDLayout.size)
         .map { CGPoint(x: $0.x.rounded(), y: $0.y.rounded()) }
     try require(expected != nil && hud.inspectionFrame?.origin == expected && hud.inspectionFrame != fixed, "Panel did not follow geometry")
@@ -76,14 +78,15 @@ import VoiRemoteMac
 
     source.snapshot = .unavailable
     try await Task.sleep(for: .milliseconds(250))
-    try require(hud.inspectionFrame == fixed, "Missing capsule did not restore fixed position")
+    try require(hud.inspectionFrame.map { screen.visibleFrame.contains($0) } == true, "Missing capsule returned to cursor screen instead of the target display")
     hud.configure(AppConfiguration())
     let count = source.reads
     try await Task.sleep(for: .milliseconds(300))
     try require(hud.previewIsHidden && source.reads == count, "Hidden panel retained queries")
+    let previewScreen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? primary
     hud.preview()
     try await Task.sleep(for: .milliseconds(250))
-    try require(hud.previewIsNonactivating && source.reads == count && hud.inspectionFrame == fixed, "Preview queried windows or lost fallback")
+    try require(hud.previewIsNonactivating && source.reads == count && hud.inspectionFrame.map { previewScreen.visibleFrame.contains($0) } == true, "Preview queried windows or lost fallback")
     try require(NSApp.keyWindow === key && NSApp.mainWindow === main && NSApp.isActive == active, "Geometry updates changed focus")
     hud.shutdown()
     try await Task.sleep(for: .milliseconds(250))

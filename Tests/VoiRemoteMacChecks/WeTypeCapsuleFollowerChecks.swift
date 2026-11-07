@@ -36,6 +36,15 @@ import VoiRemoteMac
         WeTypeGeometrySnapshot(version: version, windows: windows)
     }
     return [
+        ("observed 3.0.1 voice windows match and preserve the calibrated lower control", {
+            var matcher = WeTypeCapsuleMatcher()
+            let compact = window(1, CGRect(x: 100, y: 200, width: 200, height: 130))
+            try check(matcher.select(snapshot([compact], version: "3.0.1")) == compact.bounds, "Current patch version fell back to cursor screen")
+            let capsule = WeTypeCapsuleMatcher.capsuleBounds(in: compact.bounds)
+            try check(capsule == CGRect(x: 156, y: 230, width: 88, height: 36), "Green control offset drifted")
+            let expanded = CGRect(x: 25, y: 150, width: 350, height: 180)
+            try check(WeTypeCapsuleMatcher.capsuleBounds(in: expanded) == capsule, "Upper text growth shifted the control")
+        }),
         ("capsule profile rejects wide candidates unknown versions and ambiguity", {
             var matcher = WeTypeCapsuleMatcher()
             let wide = window(2, CGRect(x: 0, y: 0, width: 510, height: 32))

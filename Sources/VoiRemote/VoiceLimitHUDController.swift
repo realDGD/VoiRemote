@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreGraphics
 import VoiRemoteCore
 import VoiRemoteMac
 import SwiftUI
@@ -56,6 +57,7 @@ enum VoiceLimitHUDLayout {
     func preview() { runtime.preview() }
     var previewIsHidden: Bool { runtime.state.presentation == .hidden && panel?.isVisible != true }
     var inspectionFrame: CGRect? { panel?.isVisible == true ? panel?.frame : nil }
+    var inspectionLevel: Int? { panel?.isVisible == true ? panel?.level.rawValue : nil }
     var previewIsNonactivating: Bool {
         guard let panel else { return false }
         return panel.isVisible && panel.isOnActiveSpace && panel.occlusionState.contains(.visible) && !panel.isKeyWindow && !panel.isMainWindow && !panel.canBecomeKey
@@ -71,6 +73,14 @@ enum VoiceLimitHUDLayout {
         observers.removeAll(); panel?.orderOut(nil); panel?.close(); panel = nil; hosting = nil
     }
     private func currentScreen() -> NSScreen? {
+        let screens = NSScreen.screens
+        if let anchor = follower.anchor, let primary = screens.first,
+           let index = VoiceReminderPlacement.screenIndex(containingTopLeftRect: WeTypeCapsuleMatcher.capsuleBounds(in: anchor), primaryMaxY: primary.frame.maxY,
+                screens: screens.map { ReminderScreen(frame: $0.frame, visibleFrame: $0.visibleFrame) }) {
+            let selected = screens[index]
+            screenID = selected.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+            return selected
+        }
         if let screenID, let existing = NSScreen.screens.first(where: { $0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber == screenID }) {
             return existing
         }
@@ -93,7 +103,7 @@ enum VoiceLimitHUDLayout {
             window = VoiceLimitPanel(contentRect: NSRect(origin: .zero, size: VoiceLimitHUDLayout.size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             window.title = "语音时限提醒"
             window.isOpaque = false; window.backgroundColor = .clear
-            window.hasShadow = true; window.level = .floating
+            window.hasShadow = true; window.level = NSWindow.Level(rawValue: WeTypeCapsuleMatcher.windowLayer)
             window.ignoresMouseEvents = true; window.hidesOnDeactivate = false
             window.isReleasedWhenClosed = false
             window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
@@ -129,7 +139,7 @@ enum VoiceLimitHUDLayout {
             return
         }
         let frame = screen.visibleFrame
-        let desiredX = presentationState.position == .bottomCenter ? frame.midX - size.width / 2 : frame.maxX - size.width - 24
+        let desiredX = presentationState.position == .bottomCenter ? frame.midX - VoiceLimitHUDLayout.compactWidth / 2 : frame.maxX - size.width - 24
         let x = min(max(frame.minX + 12, desiredX), max(frame.minX + 12, frame.maxX - size.width - 12))
         let y = min(frame.minY + 88, max(frame.minY, frame.maxY - size.height - 12))
         let point = NSPoint(x: x, y: y)
