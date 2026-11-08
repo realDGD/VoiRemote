@@ -23,7 +23,7 @@ enum VoiceLimitHUDLayout {
     private let follower: WeTypeCapsuleFollower
     private let hasInspectionSource: Bool
     private var subscription: AnyCancellable?
-    private var anchorSubscription: AnyCancellable?
+    private var trackingSubscription: AnyCancellable?
     private var observers: [NSObjectProtocol] = []
     private var panel: VoiceLimitPanel?
     private var hosting: NSHostingView<VoiceLimitHUD>?
@@ -39,10 +39,10 @@ enum VoiceLimitHUDLayout {
         self.runtime = runtime
         hasInspectionSource = inspectionSource != nil
         follower = WeTypeCapsuleFollower(source: inspectionSource ?? SystemWeTypeWindowSource())
-        anchorSubscription = follower.anchors.sink { [weak self] _ in self?.placeVisiblePanel() }
+        trackingSubscription = follower.states.sink { [weak self] _ in self?.present() }
         subscription = runtime.$state.sink { [weak self] state in self?.render(state) }
         observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.placeVisiblePanel() }
+            MainActor.assumeIsolated { self?.present() }
         })
         let workspace = NSWorkspace.shared.notificationCenter
         observers.append(workspace.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
@@ -65,7 +65,7 @@ enum VoiceLimitHUDLayout {
     }
     func shutdown() {
         guard !stopped else { return }
-        stopped = true; follower.shutdown(); runtime.shutdown(); subscription = nil; anchorSubscription = nil
+        stopped = true; follower.shutdown(); runtime.shutdown(); subscription = nil; trackingSubscription = nil
         for observer in observers {
             NotificationCenter.default.removeObserver(observer)
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
@@ -96,7 +96,13 @@ enum VoiceLimitHUDLayout {
             _ = currentScreen()
         }
         follower.update(state, allowed: !InterfaceInspection.enabled || hasInspectionSource)
-        guard state.presentation != .hidden, currentScreen() != nil else { panel?.orderOut(nil); return }
+        present()
+    }
+    private func present() {
+        guard !stopped else { return }
+        guard presentationState.presentation != .hidden,
+              !presentationState.mayFollowCapsule || follower.state.canPresent,
+              currentScreen() != nil else { panel?.orderOut(nil); return }
         let window: VoiceLimitPanel
         if let panel { window = panel }
         else {

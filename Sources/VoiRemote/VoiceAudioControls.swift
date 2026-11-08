@@ -73,7 +73,7 @@ struct VoiceAudioControls: View {
                 }
                 Text("倒计时随本段语音持续显示；“松开再按”默认在最后 10 秒展开，最后 5 秒变红。展开时间可设为语音开始后 0–55 秒，0 秒立即展开。按约 60 秒单段时限估算，不会延长录音，也不影响键盘直接触发的语音。")
                     .font(.caption).foregroundStyle(.secondary)
-                Text("倒计时优先与微信绿色语音胶囊并排，并避开上方文字；空间不足时调整位置，未找到、位置不明确或微信版本不匹配时使用固定位置。预览演示 5 秒内展开，只显示固定位置。")
+                Text("首次先等微信语音胶囊出现再并排显示，最多等待 2 秒；无法定位时使用固定位置。预览立即显示，演示 5 秒内展开，不查询微信窗口。")
                     .font(.caption).foregroundStyle(.secondary)
             }
             LabeledContent("音频连接", value: audio.status)

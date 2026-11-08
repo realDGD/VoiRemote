@@ -46,9 +46,7 @@ import VoiRemoteMac
     var policy = VoiceLimitIndicator(); policy.begin(segment: 1, at: 0, hasRC003Limit: true)
     hud.update(policy)
     try await Task.sleep(for: .milliseconds(250))
-    let fixed = hud.inspectionFrame
-    try require(fixed?.size == VoiceLimitHUDLayout.size && source.reads > 0, "Missing panel/fallback or inconsistent compact size")
-    try require(hud.inspectionLevel == WeTypeCapsuleMatcher.windowLayer, "Reminder is below the voice window level")
+    try require(hud.inspectionFrame == nil && source.reads > 0, "Initial fallback flashed before the voice window existed")
 
     let appKitBounds = CGRect(x: screen.visibleFrame.midX - 175, y: screen.visibleFrame.midY, width: 350, height: 130)
     let first = CGRect(x: appKitBounds.minX, y: primary.frame.maxY - appKitBounds.maxY, width: 350, height: 130)
@@ -57,7 +55,9 @@ import VoiRemoteMac
     let expected = VoiceReminderPlacement.following(topLeftWindow: first, topLeftCapsule: WeTypeCapsuleMatcher.capsuleBounds(in: first), primaryMaxY: primary.frame.maxY,
         screens: NSScreen.screens.map { ReminderScreen(frame: $0.frame, visibleFrame: $0.visibleFrame) }, size: VoiceLimitHUDLayout.size)
         .map { CGPoint(x: $0.x.rounded(), y: $0.y.rounded()) }
-    try require(expected != nil && hud.inspectionFrame?.origin == expected && hud.inspectionFrame != fixed, "Panel did not follow geometry")
+    try require(expected != nil && hud.inspectionFrame?.origin == expected, "First visible panel did not appear beside the delayed capsule")
+    try require(hud.inspectionFrame?.size == VoiceLimitHUDLayout.size, "First visible panel has incorrect size")
+    try require(hud.inspectionLevel == WeTypeCapsuleMatcher.windowLayer, "Reminder is below the voice window level")
     try require(!runtime.state.showsReleaseHint, "Early countdown should remain compact")
     try saveHUD("follow-compact")
     now = 50; hud.configure(config)
@@ -88,8 +88,14 @@ import VoiRemoteMac
     try await Task.sleep(for: .milliseconds(250))
     try require(hud.previewIsNonactivating && source.reads == count && hud.inspectionFrame.map { previewScreen.visibleFrame.contains($0) } == true, "Preview queried windows or lost fallback")
     try require(NSApp.keyWindow === key && NSApp.mainWindow === main && NSApp.isActive == active, "Geometry updates changed focus")
+    hud.configure(config)
+    try await Task.sleep(for: .milliseconds(250))
+    try require(hud.inspectionFrame == nil, "Returning from preview exposed fallback before initial search")
+    try await Task.sleep(for: .seconds(2))
+    try require(hud.previewIsNonactivating && hud.inspectionFrame != nil, "Unavailable capsule never reached bounded fallback")
+    let shutdownCount = source.reads
     hud.shutdown()
     try await Task.sleep(for: .milliseconds(250))
-    try require(hud.previewIsHidden && source.reads == count, "Shutdown revived panel/queries")
-    print("Synthetic capsule HUD smoke passed: compact/expanded/urgent states, stable expansion anchor, follows/moves, avoids text growth, restores fallback, stops queries; preview/shutdown and own focus unchanged; no foreign windows or hardware")
+    try require(hud.previewIsHidden && source.reads == shutdownCount, "Shutdown revived panel/queries")
+    print("Synthetic capsule HUD smoke passed: no initial fallback flash, first frame follows delayed anchor, compact/expanded/urgent states, stable expansion, bounded missing-target fallback, cleanup and unchanged focus; no foreign windows or hardware")
 }
